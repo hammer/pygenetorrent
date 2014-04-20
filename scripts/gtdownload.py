@@ -65,7 +65,7 @@ def get_fingerprint():
     suffix = get_random_string(12)
     return FINGERPRINT_PREFIX + suffix
 
-def get_temp_crt_file_path(crt):
+def get_temp_crt_file(crt):
     temp_crt_file_fd, temp_crt_file_path = tempfile.mkstemp('.crt')
     temp_crt_file = os.fdopen(temp_crt_file_fd, 'w')
     temp_crt_file.write(crt)
@@ -73,7 +73,7 @@ def get_temp_crt_file_path(crt):
     logging.debug('Wrote %s' % temp_crt_file_path)
     return temp_crt_file_path
 
-def get_temp_key_file_path(rsa):
+def get_temp_key_file(rsa):
     temp_key_file_fd, temp_key_file_path = tempfile.mkstemp('.key')
     temp_key_file = os.fdopen(temp_key_file_fd, 'w')
     key = rsa.exportKey('DER', pkcs=8).encode('base64').strip()
