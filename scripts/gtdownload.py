@@ -1,11 +1,13 @@
 #! /usr/bin/env python
 import argparse
+import binascii
 import hashlib
 import logging
 import os
 import random
 import string
 import tempfile
+import urllib
 
 import bencode
 from Crypto.PublicKey import RSA
@@ -27,6 +29,21 @@ DISTINGUISHED_NAME = {
     'emailaddress': 'root@uploadersinc.com',
 }
 
+def percent_encode_byte_sequence(byte_sequence):
+    lowercase = range(ord('a'), ord('z') + 1)
+    uppercase = range(ord('A'), ord('Z') + 1)
+    digits = range(ord('0'), ord('9') + 1)
+    other = [ord('-'), ord('_'), ord('.'), ord('~')]
+    unreserved = lowercase + uppercase + digits + other
+    encoded_string = []
+    for byte in byte_sequence:
+        if ord(byte) in unreserved:
+            encoded_string.append(byte)
+        else:
+            encoded_byte = '%' + binascii.hexlify(byte)
+            encoded_string.append(encoded_byte)
+    return ''.join(encoded_string)
+
 def get_auth_token(credential_file):
     # TODO(hammer): handle URLs and files
     r = requests.get(credential_file)
@@ -46,13 +63,13 @@ def get_cert_sign_url(content_specifier):
     return content_specifier.split(url_marker)[0] + url_marker + GT_CERT_SIGN_TAIL
 
 def get_info_hash(gto_dict):
-    return hashlib.sha1(bencode.bencode(gto_dict.get('info'))).hexdigest()
+    return hashlib.sha1(bencode.bencode(gto_dict.get('info')))
 
 def get_crt(cert_sign_url, auth_token, csr, info_hash):
     payload = {
         'token': auth_token,
         'cert_req': csr,
-        'info_hash': info_hash,
+        'info_hash': info_hash.hexdigest(),
     }
     r = requests.post(cert_sign_url, data=payload)
     return r.content
@@ -90,7 +107,7 @@ def make_tracker_request(gto_dict, info_hash, rsa, crt):
     left = sum([f.get('length') for f in gto_dict.get('info').get('files')])
     key = get_random_string(8)
     payload = {
-        'info_hash': info_hash,
+        'info_hash': percent_encode_byte_sequence(info_hash.digest()),
         'peer_id': peer_id,
         'port': 20893,
         'uploaded': 0,
@@ -139,7 +156,7 @@ if __name__ == '__main__':
         cert_sign_url = get_cert_sign_url(content_specifier)
         logging.debug('Got cert_sign_url: %s' % cert_sign_url)
         info_hash = get_info_hash(gto_dict)
-        logging.debug('Got info_hash: %s' % info_hash)
+        logging.debug('Got info_hash (in hex): %s' % info_hash.hexdigest())
         rsa = RSA.generate(bits=RSA_KEY_SIZE, e=RSA_EXPONENT)
         logging.debug('RSA keypair generated; public key: %s' % rsa.publickey().exportKey())
         csr = pkiutils.create_csr(rsa, DISTINGUISHED_NAME)
