@@ -6,13 +6,11 @@ import os
 import random
 import string
 import tempfile
-import urllib
 
 import bencode
 from Crypto.PublicKey import RSA
+import pkiutils
 import requests
-
-import pkiutils # Use https://github.com/hammer/python-pkiutils
 
 
 FINGERPRINT_PREFIX = '-GT3850-'
