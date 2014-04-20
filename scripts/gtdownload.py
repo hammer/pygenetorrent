@@ -91,7 +91,6 @@ def make_tracker_request(gto_dict, info_hash, rsa, crt):
     left = sum([f.get('length') for f in gto_dict.get('info').get('files')])
     key = get_random_string(8)
     payload = {
-        'info_hash': urllib.quote(info_hash.digest(), ''),
         'peer_id': peer_id,
         'port': 20893,
         'uploaded': 0,
@@ -106,14 +105,15 @@ def make_tracker_request(gto_dict, info_hash, rsa, crt):
         'supportcrypto': 1,
         'event': 'started',
     }
-    url_base = 'https://dream.annailabs.com:21111/tracker.php/announce'
-    temp_crt_file_path = get_temp_crt_file_path(crt)
-    temp_key_file_path = get_temp_key_file_path(rsa)
-    r = requests.get(url_base, params=payload, verify=False,
-                     cert=(temp_crt_file_path, temp_key_file_path))
+    url = 'https://dream.annailabs.com:21111/tracker.php/announce'
+    url += '?info_hash=' + urllib.quote(info_hash.digest(), '') + '&'
+    url += urllib.urlencode(payload)
+    temp_crt_file = get_temp_crt_file(crt)
+    temp_key_file = get_temp_key_file(rsa)
+    r = requests.get(url, verify=False, cert=(temp_crt_file, temp_key_file))
     logging.debug('Tracker response content: %s' % r.content)
-    os.remove(temp_crt_file_path)
-    os.remove(temp_key_file_path)
+    os.remove(temp_crt_file)
+    os.remove(temp_key_file)
     tracker_response = bencode.bdecode(r.content.strip())
     return tracker_response
 
