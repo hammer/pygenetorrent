@@ -1,6 +1,5 @@
 #! /usr/bin/env python
 import argparse
-import binascii
 import hashlib
 import logging
 import os
@@ -28,21 +27,6 @@ DISTINGUISHED_NAME = {
     'cn': 'www.uploadersinc.com',
     'emailaddress': 'root@uploadersinc.com',
 }
-
-def percent_encode_byte_sequence(byte_sequence):
-    lowercase = range(ord('a'), ord('z') + 1)
-    uppercase = range(ord('A'), ord('Z') + 1)
-    digits = range(ord('0'), ord('9') + 1)
-    other = [ord('-'), ord('_'), ord('.'), ord('~')]
-    unreserved = lowercase + uppercase + digits + other
-    encoded_string = []
-    for byte in byte_sequence:
-        if ord(byte) in unreserved:
-            encoded_string.append(byte)
-        else:
-            encoded_byte = '%' + binascii.hexlify(byte)
-            encoded_string.append(encoded_byte)
-    return ''.join(encoded_string)
 
 def get_auth_token(credential_file):
     # TODO(hammer): handle URLs and files
@@ -107,7 +91,7 @@ def make_tracker_request(gto_dict, info_hash, rsa, crt):
     left = sum([f.get('length') for f in gto_dict.get('info').get('files')])
     key = get_random_string(8)
     payload = {
-        'info_hash': percent_encode_byte_sequence(info_hash.digest()),
+        'info_hash': urllib.quote(info_hash.digest(), ''),
         'peer_id': peer_id,
         'port': 20893,
         'uploaded': 0,
