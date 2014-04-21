@@ -4,6 +4,8 @@ import hashlib
 import logging
 import os
 import random
+import socket
+import ssl
 import string
 import tempfile
 import urllib
@@ -85,9 +87,8 @@ def get_temp_key_file(rsa):
     logging.debug('Wrote %s' % temp_key_file_path)
     return temp_key_file_path
 
-def make_tracker_request(gto_dict, info_hash, rsa, crt):
+def make_tracker_request(gto_dict, peer_id, info_hash, key_file, crt_file):
     # TODO(hammer): support partial downloads
-    peer_id = get_fingerprint()
     left = sum([f.get('length') for f in gto_dict.get('info').get('files')])
     key = get_random_string(8)
     payload = {
@@ -108,12 +109,8 @@ def make_tracker_request(gto_dict, info_hash, rsa, crt):
     url = 'https://dream.annailabs.com:21111/tracker.php/announce'
     url += '?info_hash=' + urllib.quote(info_hash.digest(), '') + '&'
     url += urllib.urlencode(payload)
-    temp_crt_file = get_temp_crt_file(crt)
-    temp_key_file = get_temp_key_file(rsa)
-    r = requests.get(url, verify=False, cert=(temp_crt_file, temp_key_file))
+    r = requests.get(url, verify=False, cert=(crt_file, key_file))
     logging.debug('Tracker response content: %s' % r.content)
-    os.remove(temp_crt_file)
-    os.remove(temp_key_file)
     tracker_response = bencode.bdecode(r.content.strip())
     return tracker_response
 
@@ -121,6 +118,28 @@ def get_peer_ip_and_port(six_bytes):
     ip = '.'.join([str(ord(byte)) for byte in six_bytes[:4]])
     port = (ord(six_bytes[4]) << 8) + ord(six_bytes[5])
     return ip, port
+
+def handshake_with_peer(peer_ip, peer_port, key_file, crt_file, info_hash, peer_id):
+    pstr = 'BitTorrent protocol'
+    pstrlen = len(pstr)
+    peer_id = peer_id
+
+    handshake = b''.join([
+        chr(pstrlen),
+        pstr,
+        chr(0) * 8,
+        info_hash.digest(),
+        peer_id,
+    ])
+    logging.debug('Handshake length: %d' % len(handshake))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock = ssl.wrap_socket(sock, keyfile=key_file, certfile=crt_file)
+    sock.connect((peer_ip, peer_port))
+    sock.send(handshake)
+    handshake_response = sock.recv(68)
+    logging.debug('Handhske response length: %d' % len(handshake_response))
+    sock.close()
+    return handshake_response
 
 
 if __name__ == '__main__':
@@ -152,9 +171,20 @@ if __name__ == '__main__':
         logging.debug('CSR generated: %s' % csr)
         crt = get_crt(cert_sign_url, auth_token, csr, info_hash)
         logging.debug('Got signed CRT: %s' % crt)
+        temp_key_file = get_temp_key_file(rsa)
+        temp_crt_file = get_temp_crt_file(crt)
 
         # Download
-        tracker_response = make_tracker_request(gto_dict, info_hash, rsa, crt)
+        peer_id = get_fingerprint()
+        logging.debug('Got peer id: %s' % peer_id)
+        tracker_response = make_tracker_request(gto_dict, peer_id, info_hash, temp_key_file, temp_crt_file)
         logging.debug('Got tracker response: %s' % tracker_response)
         peer_ip, peer_port = get_peer_ip_and_port(tracker_response.get('peers'))
         logging.debug('Got peer ip and port: %s:%s' % (peer_ip, peer_port))
+        handshake_response = handshake_with_peer(peer_ip, peer_port, temp_key_file, temp_crt_file, info_hash, peer_id)
+        logging.debug('Got handshake response: %s' % handshake_response)
+
+        # Clean up
+        os.remove(temp_key_file)
+        os.remove(temp_crt_file)
+
