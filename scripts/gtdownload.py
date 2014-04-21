@@ -117,6 +117,11 @@ def make_tracker_request(gto_dict, info_hash, rsa, crt):
     tracker_response = bencode.bdecode(r.content.strip())
     return tracker_response
 
+def get_peer_ip_and_port(six_bytes):
+    ip = '.'.join([str(ord(byte)) for byte in six_bytes[:4]])
+    port = (ord(six_bytes[4]) << 8) + ord(six_bytes[5])
+    return ip, port
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -148,6 +153,8 @@ if __name__ == '__main__':
         crt = get_crt(cert_sign_url, auth_token, csr, info_hash)
         logging.debug('Got signed CRT: %s' % crt)
 
-        # TODO(hammer): Download
+        # Download
         tracker_response = make_tracker_request(gto_dict, info_hash, rsa, crt)
         logging.debug('Got tracker response: %s' % tracker_response)
+        peer_ip, peer_port = get_peer_ip_and_port(tracker_response.get('peers'))
+        logging.debug('Got peer ip and port: %s:%s' % (peer_ip, peer_port))
