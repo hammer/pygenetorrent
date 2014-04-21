@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 import argparse
 import base64
 import hashlib
@@ -8,6 +8,7 @@ import random
 import socket
 import ssl
 import string
+import struct
 import tempfile
 import urllib
 
@@ -120,6 +121,13 @@ def get_peer_ip_and_port(six_bytes):
     port = (six_bytes[4] << 8) + six_bytes[5]
     return ip, port
 
+def validate_handshake(handshake_response):
+    # TODO(hammer): examine reserved to determine extensions supported
+    pstrlen = handshake_response[0]
+    pstr = handshake_response[1:pstrlen + 1]
+    reserved, info_hash, peer_id = struct.unpack('8s20s20s', handshake_response[pstrlen+1:])
+    logging.debug('Handshake response contents: %s' % locals())
+
 def handshake_with_peer(peer_ip, peer_port, key_file, crt_file, info_hash, peer_id):
     pstr = 'BitTorrent protocol'
     pstrlen = len(pstr)
@@ -139,9 +147,9 @@ def handshake_with_peer(peer_ip, peer_port, key_file, crt_file, info_hash, peer_
     sock.connect((peer_ip, peer_port))
     sock.send(handshake)
     handshake_response = sock.recv(68)
-    logging.debug('Handhske response length: %d' % len(handshake_response))
-    sock.close()
-    return handshake_response
+    logging.debug('Handshake response: %s' % handshake_response)
+    validate_handshake(handshake_response)
+    return sock
 
 
 if __name__ == '__main__':
@@ -184,10 +192,9 @@ if __name__ == '__main__':
         logging.debug('Got tracker response: %s' % tracker_response)
         peer_ip, peer_port = get_peer_ip_and_port(tracker_response.get('peers'))
         logging.debug('Got peer ip and port: %s:%s' % (peer_ip, peer_port))
-        handshake_response = handshake_with_peer(peer_ip, peer_port,
-                                                 temp_key_file, temp_crt_file,
-                                                 info_hash, peer_id)
-        logging.debug('Got handshake response: %s' % handshake_response)
+        sock = handshake_with_peer(peer_ip, peer_port,
+                                   temp_key_file, temp_crt_file,
+                                   info_hash, peer_id)
 
         # Clean up
         os.remove(temp_key_file)
