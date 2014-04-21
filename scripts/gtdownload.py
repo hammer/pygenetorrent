@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 import argparse
+import base64
 import hashlib
 import logging
 import os
@@ -10,7 +11,7 @@ import string
 import tempfile
 import urllib
 
-import bencode
+import bcoding as bencode
 from Crypto.PublicKey import RSA
 import pkiutils
 import requests
@@ -70,7 +71,7 @@ def get_fingerprint():
 def get_temp_crt_file(crt):
     temp_crt_file_fd, temp_crt_file_path = tempfile.mkstemp('.crt')
     temp_crt_file = os.fdopen(temp_crt_file_fd, 'w')
-    temp_crt_file.write(crt)
+    temp_crt_file.write(crt.decode())
     temp_crt_file.close()
     logging.debug('Wrote %s' % temp_crt_file_path)
     return temp_crt_file_path
@@ -78,11 +79,11 @@ def get_temp_crt_file(crt):
 def get_temp_key_file(rsa):
     temp_key_file_fd, temp_key_file_path = tempfile.mkstemp('.key')
     temp_key_file = os.fdopen(temp_key_file_fd, 'w')
-    key = rsa.exportKey('DER', pkcs=8).encode('base64').strip()
-    chunk_key = [key[i:i + 64] for i in xrange(0, len(key), 64)]
+    key = base64.encodestring(rsa.exportKey('DER', pkcs=8)).decode()
+    chunk_key = [key[i:i + 64] for i in range(0, len(key), 64)]
     temp_key_file.write('-----BEGIN PRIVATE KEY-----\n')
     temp_key_file.writelines(chunk_key)
-    temp_key_file.write('\n-----END PRIVATE KEY-----\n')
+    temp_key_file.write('-----END PRIVATE KEY-----\n')
     temp_key_file.close()
     logging.debug('Wrote %s' % temp_key_file_path)
     return temp_key_file_path
@@ -107,33 +108,34 @@ def make_tracker_request(gto_dict, peer_id, info_hash, key_file, crt_file):
         'event': 'started',
     }
     url = 'https://dream.annailabs.com:21111/tracker.php/announce'
-    url += '?info_hash=' + urllib.quote(info_hash.digest(), '') + '&'
-    url += urllib.urlencode(payload)
+    url += '?info_hash=' + urllib.parse.quote(info_hash.digest(), '') + '&'
+    url += urllib.parse.urlencode(payload)
     r = requests.get(url, verify=False, cert=(crt_file, key_file))
     logging.debug('Tracker response content: %s' % r.content)
     tracker_response = bencode.bdecode(r.content.strip())
     return tracker_response
 
 def get_peer_ip_and_port(six_bytes):
-    ip = '.'.join([str(ord(byte)) for byte in six_bytes[:4]])
-    port = (ord(six_bytes[4]) << 8) + ord(six_bytes[5])
+    ip = '.'.join([str(byte) for byte in six_bytes[:4]])
+    port = (six_bytes[4] << 8) + six_bytes[5]
     return ip, port
 
 def handshake_with_peer(peer_ip, peer_port, key_file, crt_file, info_hash, peer_id):
     pstr = 'BitTorrent protocol'
     pstrlen = len(pstr)
-    peer_id = peer_id
 
     handshake = b''.join([
-        chr(pstrlen),
-        pstr,
-        chr(0) * 8,
+        chr(pstrlen).encode(),
+        pstr.encode(),
+        (chr(0) * 8).encode(),
         info_hash.digest(),
-        peer_id,
+        peer_id.encode(),
     ])
     logging.debug('Handshake length: %d' % len(handshake))
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock = ssl.wrap_socket(sock, keyfile=key_file, certfile=crt_file)
+    sock = ssl.SSLSocket(sock, keyfile=key_file, certfile=crt_file,
+                         ssl_version=ssl.PROTOCOL_TLSv1,
+                         server_hostname=info_hash.hexdigest())
     sock.connect((peer_ip, peer_port))
     sock.send(handshake)
     handshake_response = sock.recv(68)

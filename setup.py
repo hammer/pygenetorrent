@@ -7,7 +7,7 @@ setup(
     scripts=['scripts/gtdownload.py'],
     zip_safe=False,
     install_requires=[
-        'BitTorrent-bencode',
+        'bcoding',
         'pkiutils',
         'pycrypto',
         'requests',
