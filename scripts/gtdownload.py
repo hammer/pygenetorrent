@@ -179,11 +179,14 @@ if __name__ == '__main__':
         # Download
         peer_id = get_fingerprint()
         logging.debug('Got peer id: %s' % peer_id)
-        tracker_response = make_tracker_request(gto_dict, peer_id, info_hash, temp_key_file, temp_crt_file)
+        tracker_response = make_tracker_request(gto_dict, peer_id, info_hash,
+                                                temp_key_file, temp_crt_file)
         logging.debug('Got tracker response: %s' % tracker_response)
         peer_ip, peer_port = get_peer_ip_and_port(tracker_response.get('peers'))
         logging.debug('Got peer ip and port: %s:%s' % (peer_ip, peer_port))
-        handshake_response = handshake_with_peer(peer_ip, peer_port, temp_key_file, temp_crt_file, info_hash, peer_id)
+        handshake_response = handshake_with_peer(peer_ip, peer_port,
+                                                 temp_key_file, temp_crt_file,
+                                                 info_hash, peer_id)
         logging.debug('Got handshake response: %s' % handshake_response)
 
         # Clean up
