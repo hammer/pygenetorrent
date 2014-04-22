@@ -3,6 +3,7 @@ import argparse
 import base64
 import hashlib
 import logging
+import math
 import os
 import random
 import socket
@@ -31,6 +32,18 @@ DISTINGUISHED_NAME = {
     'cn': 'www.uploadersinc.com',
     'emailaddress': 'root@uploadersinc.com',
 }
+PEER_MESSAGES_IDS = [
+    'choke',
+    'unchoke',
+    'interested',
+    'not interested',
+    'have',
+    'bitfield',
+    'request',
+    'piece',
+    'cancel',
+    'port',
+]
 
 def get_auth_token(credential_file):
     # TODO(hammer): handle URLs and files
@@ -151,6 +164,29 @@ def handshake_with_peer(peer_ip, peer_port, key_file, crt_file, info_hash, peer_
     validate_handshake(handshake_response)
     return sock
 
+def process_peer_response(sock):
+    while True:
+        try:
+            response = sock.recv(4)
+        except socket.timeout:
+            return
+        if not response: return
+        logging.debug('Got length_prefix from peer: %s' % response)
+        length_prefix = struct.unpack('!i', response)[0]
+        logging.debug('Length of message: %s' % length_prefix)
+        if length_prefix:
+            response = b''
+            # TODO(hammer): time this out so we don't loop forever
+            while len(response) < length_prefix:
+                response += sock.recv(length_prefix - len(response))
+                logging.debug('Processed %d bytes from peer' % len(response))
+            message_id = response[0]
+            message_content = response[1:]
+            logging.debug('Got %s message from peer: %s'
+                          % (PEER_MESSAGES_IDS[message_id], message_content))
+        else:
+            logging.debug('Got keep-alive message from peer')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -192,9 +228,31 @@ if __name__ == '__main__':
         logging.debug('Got tracker response: %s' % tracker_response)
         peer_ip, peer_port = get_peer_ip_and_port(tracker_response.get('peers'))
         logging.debug('Got peer ip and port: %s:%s' % (peer_ip, peer_port))
+        # handshake
         sock = handshake_with_peer(peer_ip, peer_port,
                                    temp_key_file, temp_crt_file,
                                    info_hash, peer_id)
+        sock.settimeout(5)
+        process_peer_response(sock)
+        # interested
+        message = struct.pack('!ib', 1, 2)
+        sock.send(message)
+        logging.debug('Sent interested message to peer')
+        process_peer_response(sock)
+        # requests
+        total_bytes = sum([f.get('length') for f in gto_dict.get('info').get('files')])
+        total_pieces = int(len(gto_dict.get('info').get('pieces')) / 20)
+        piece_length = gto_dict.get('info').get('piece length')
+        block_length = 2 ** 14
+        blocks_per_piece = math.ceil(piece_length / block_length)
+        for i in range(total_pieces):
+            for j in range(blocks_per_piece):
+                begin = j * block_length
+                length = min(block_length, piece_length - begin)
+                message = struct.pack('!ibiii', 13, 6, i, begin, length)
+                sock.send(message)
+                logging.debug('Sent request for block %d of piece %i' % (j, i))
+                process_peer_response(sock)
 
         # Clean up
         os.remove(temp_key_file)
