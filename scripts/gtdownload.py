@@ -32,7 +32,7 @@ DISTINGUISHED_NAME = {
     'cn': 'www.uploadersinc.com',
     'emailaddress': 'root@uploadersinc.com',
 }
-PEER_MESSAGES_IDS = [
+PEER_MESSAGE_IDS = [
     'choke',
     'unchoke',
     'interested',
@@ -183,7 +183,7 @@ def process_peer_response(sock):
             message_id = response[0]
             message_content = response[1:]
             logging.debug('Got %s message from peer: %s'
-                          % (PEER_MESSAGES_IDS[message_id], message_content))
+                          % (PEER_MESSAGE_IDS[message_id], message_content))
         else:
             logging.debug('Got keep-alive message from peer')
 
